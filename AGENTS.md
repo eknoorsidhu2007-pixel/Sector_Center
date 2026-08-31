@@ -27,6 +27,17 @@ The local project folder may have a different name from the GitHub repository. D
 * Git/GitHub
 * Local development through `npm run dev`
 
+### Installed But Not Yet Used
+
+The following dependencies are already in `package.json` but no application code
+imports them yet. They were installed ahead of the features that will need them.
+
+* `@supabase/supabase-js`, `@supabase/ssr` — intended for future user accounts/data
+* `stripe`, `@stripe/stripe-js` — intended for future subscription payments
+
+Do not start using these libraries just because they are installed. Auth,
+database, and payment work still requires an architecture discussion first.
+
 Current project structure includes:
 
 ```text
@@ -64,13 +75,27 @@ Secrets are stored in `.env.local`.
 
 `.env.local` must NEVER be committed to GitHub.
 
-The project currently uses:
+The only variable the application currently reads is:
 
 ```env
 FINNHUB_API_KEY=...
 ```
 
-There is an `.env.example` file for documenting required environment variables without exposing secrets.
+`.env.example` additionally documents placeholders for variables reserved for
+future features, so its key list is intentionally larger than what the code uses
+today:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+FINNHUB_API_KEY=
+ALPHA_VANTAGE_API_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+```
+
+`.env.example` exists to document required environment variables without exposing secrets.
 
 Never expose server-side API keys through client-side code.
 
@@ -357,6 +382,27 @@ Current API location:
 app/api/news/route.ts
 ```
 
+### Known Recurring Mistake: Duplicate Page In The API Folder
+
+A duplicate copy of the news page was accidentally restored to
+`app/api/news/page.tsx` and committed a second time. Because the App Router does
+not allow a `page.tsx` and a `route.ts` in the same segment, this breaks the app
+with:
+
+```text
+Conflicting route and page at /api/news: route at /api/news/route and page at /api/news/page
+```
+
+It has been deleted again. `app/api/news/` must contain `route.ts` only. Prefer
+`git add <specific files>` over `git add .` so a stray file like this is not
+re-committed.
+
+### `AGENTS.md` Is Partly Auto-Generated
+
+Running `next dev` appends a `<!-- BEGIN:nextjs-agent-rules -->` block to the end
+of this file and re-adds it if removed. Deleting that block is not worth a
+commit; it will simply come back on the next dev run.
+
 ---
 
 ## Current Priority
@@ -414,3 +460,13 @@ For complex tasks:
 * Wait for approval before major implementation.
 
 Always preserve existing working functionality unless the task explicitly requires changing it.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
