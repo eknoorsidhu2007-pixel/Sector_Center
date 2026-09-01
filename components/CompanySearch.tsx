@@ -11,7 +11,12 @@ type SearchStatus = "idle" | "loading" | "ready" | "error";
 
 interface CompanySearchProps {
   onSelect: (company: CompanyMatch) => void;
-  initialQuery?: string;
+  selectedSymbol: string;
+  selectedCompany: CompanyMatch | null;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 /**
@@ -22,35 +27,51 @@ interface CompanySearchProps {
  */
 export default function CompanySearch({
   onSelect,
-  initialQuery = "",
+  selectedSymbol,
+  selectedCompany,
 }: CompanySearchProps) {
-  const [query, setQuery] = useState(initialQuery);
+  const selectedLabel = selectedCompany?.name ?? selectedSymbol;
+  const [query, setQuery] = useState(selectedLabel);
+  const [prevSelectedLabel, setPrevSelectedLabel] = useState(selectedLabel);
   const [results, setResults] = useState<CompanyMatch[]>([]);
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [showSpinner, setShowSpinner] = useState(false);
+  const [spinnerReady, setSpinnerReady] = useState(false);
 
   const listboxId = useId();
   const abortRef = useRef<AbortController | null>(null);
   const cacheRef = useRef(new Map<string, CompanyMatch[]>());
   const listRef = useRef<HTMLUListElement | null>(null);
-  // Selecting a suggestion rewrites the input; that must not trigger a search.
-  const skipNextSearchRef = useRef(false);
+
+  if (selectedLabel !== prevSelectedLabel) {
+    setPrevSelectedLabel(selectedLabel);
+    setQuery(selectedLabel);
+    setResults([]);
+    setStatus("ready");
+    setIsOpen(false);
+    setActiveIndex(-1);
+  }
+
+  const showSpinner = status === "loading" && spinnerReady;
+
+  if (status !== "loading" && spinnerReady) {
+    setSpinnerReady(false);
+  }
 
   useEffect(() => {
-    if (skipNextSearchRef.current) {
-      skipNextSearchRef.current = false;
+    abortRef.current?.abort();
+    abortRef.current = null;
+
+    // The input is showing the selected company, not a user-typed query.
+    if (query === selectedLabel) {
       return;
     }
 
     const trimmed = query.trim();
 
     if (!trimmed) {
-      setResults([]);
-      setStatus("idle");
-      setActiveIndex(-1);
       return;
     }
 
@@ -66,8 +87,6 @@ export default function CompanySearch({
     setStatus("loading");
 
     const timer = setTimeout(() => {
-      abortRef.current?.abort();
-
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -98,7 +117,7 @@ export default function CompanySearch({
           setStatus("ready");
           setActiveIndex(matches.length > 0 ? 0 : -1);
         } catch (error) {
-          if (error instanceof DOMException && error.name === "AbortError") {
+          if (isAbortError(error)) {
             return;
           }
 
@@ -114,17 +133,20 @@ export default function CompanySearch({
       void run();
     }, DEBOUNCE_MS);
 
-    return () => clearTimeout(timer);
-  }, [query]);
+    return () => {
+      clearTimeout(timer);
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, [query, selectedLabel]);
 
   // Delay the spinner so fast responses don't flash a loading state.
   useEffect(() => {
     if (status !== "loading") {
-      setShowSpinner(false);
       return;
     }
 
-    const timer = setTimeout(() => setShowSpinner(true), SPINNER_DELAY_MS);
+    const timer = setTimeout(() => setSpinnerReady(true), SPINNER_DELAY_MS);
 
     return () => clearTimeout(timer);
   }, [status]);
@@ -139,7 +161,6 @@ export default function CompanySearch({
 
   const handleSelect = useCallback(
     (company: CompanyMatch) => {
-      skipNextSearchRef.current = true;
       setQuery(company.name);
       setResults([]);
       setStatus("ready");
@@ -243,8 +264,15 @@ export default function CompanySearch({
           value={query}
           placeholder="Search a company or ticker, e.g. Apple or AAPL"
           onChange={(event) => {
-            setQuery(event.target.value);
+            const nextQuery = event.target.value;
+            setQuery(nextQuery);
             setIsOpen(true);
+
+            if (!nextQuery.trim()) {
+              setResults([]);
+              setStatus("idle");
+              setActiveIndex(-1);
+            }
           }}
           onFocus={() => setIsOpen(true)}
           onBlur={() => setIsOpen(false)}

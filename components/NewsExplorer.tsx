@@ -179,7 +179,11 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
         </p>
       </header>
 
-      <CompanySearch onSelect={handleSelect} />
+      <CompanySearch
+        onSelect={handleSelect}
+        selectedSymbol={symbol}
+        selectedCompany={company}
+      />
 
       <section className="mt-8" aria-live="polite">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-200 pb-3 dark:border-zinc-800">
