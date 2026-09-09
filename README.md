@@ -1,4 +1,3 @@
-[README for Sector Center.md](https://github.com/user-attachments/files/31981728/README.for.Sector.Center.md)
 # Sector Center
 
 
