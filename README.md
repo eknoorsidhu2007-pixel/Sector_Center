@@ -1,6 +1,14 @@
 # Sector Center
 
+# Sector Center
 
+![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
+![React](https://img.shields.io/badge/React-19-blue?logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38B2AC?logo=tailwind-css&logoColor=white)
+![Finnhub](https://img.shields.io/badge/Data-Finnhub-00B67A)
+
+A trader-focused stock market news platform...
 
 A trader-focused stock market news platform. Search any listed company by name
 or ticker and read its latest news coverage, with results ranked so the
