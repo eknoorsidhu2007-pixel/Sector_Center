@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { getMarketData } from "@/lib/market";
 import type { CompanyProfile, KeyMetrics, Quote } from "@/lib/market";
+import PriceChart from "@/components/PriceChart";
 import {
   formatChange,
   formatChangePercent,
@@ -156,6 +157,11 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
             As of {formatDateValue(quote.timestamp)}
           </p>
         )}
+      </section>
+
+      {/* Price chart */}
+      <section className="mb-8" aria-label="Price chart">
+        <PriceChart symbol={symbol} />
       </section>
 
       {/* Key metrics grid */}
