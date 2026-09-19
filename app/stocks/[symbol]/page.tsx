@@ -153,15 +153,23 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
         </div>
       </section>
 
-      {/* News link */}
+      {/* News section */}
       <section aria-label="News">
-        <Link
-          href={`/news?symbol=${encodeURIComponent(symbol)}`}
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
-        >
-          View latest news
-          <span aria-hidden="true">&rarr;</span>
-        </Link>
+        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            Latest News
+          </h2>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Ranked, deduplicated coverage of {companyName} from the past 7 days.
+          </p>
+          <Link
+            href={`/news?symbol=${encodeURIComponent(symbol)}`}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            View latest news
+            <span aria-hidden="true">&rarr;</span>
+          </Link>
+        </div>
       </section>
     </main>
   );
