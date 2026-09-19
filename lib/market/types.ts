@@ -221,6 +221,156 @@ export function metricSeries(
   return series[period][concept] ?? [];
 }
 
+// -- Insider activity ----------------------------------------------------------
+
+/**
+ * Semantic reading of an SEC Form 3/4/5 transaction code. The distinction
+ * matters: an executive buying on the open market is a conviction signal,
+ * while a grant vesting or an option exercise is compensation mechanics and
+ * carries almost no signal. Lumping them together produces misleading
+ * "insiders are buying" claims, so the raw code is preserved alongside.
+ */
+export type InsiderTransactionKind =
+  | "open-market-buy"
+  | "open-market-sell"
+  | "grant"
+  | "option-exercise"
+  | "tax-or-disposition"
+  | "gift"
+  | "other";
+
+export interface InsiderTransaction {
+  name: string;
+  /** Raw SEC transaction code, e.g. "P", "S", "M", "A". */
+  transactionCode: string | null;
+  kind: InsiderTransactionKind;
+  /** True when the security is a derivative (option, RSU) rather than stock. */
+  isDerivative: boolean;
+  /** Signed share delta: positive acquired, negative disposed. */
+  change: number | null;
+  /** Shares held after the transaction. */
+  sharesHeld: number | null;
+  price: number | null;
+  /** change x price when both are known, else null. Never estimated. */
+  value: number | null;
+  transactionDate: string | null;
+  filingDate: string | null;
+  currency: string | null;
+}
+
+/** Monthly insider sentiment. MSPR runs -100 (most negative) to 100. */
+export interface InsiderSentimentPoint {
+  year: number;
+  month: number;
+  /** Monthly share purchase ratio. */
+  mspr: number | null;
+  /** Net share change across all insider transactions that month. */
+  change: number | null;
+}
+
+// -- Filings -------------------------------------------------------------------
+
+export interface SecFiling {
+  accessNumber: string | null;
+  /** Form type, e.g. "10-K", "10-Q", "8-K", "4". */
+  form: string | null;
+  filedDate: string | null;
+  acceptedDate: string | null;
+  /** Human-readable filing index page. */
+  filingUrl: string | null;
+  /** Primary document. */
+  reportUrl: string | null;
+  cik: string | null;
+}
+
+// -- Financial statements (as reported) ----------------------------------------
+
+/** One line item exactly as the filer tagged it. Never normalized. */
+export interface ReportLineItem {
+  concept: string | null;
+  label: string | null;
+  unit: string | null;
+  value: number | null;
+}
+
+export interface FinancialReport {
+  accessNumber: string | null;
+  form: string | null;
+  year: number | null;
+  quarter: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  filedDate: string | null;
+  /** Balance sheet line items. */
+  balanceSheet: ReportLineItem[];
+  /** Income statement line items. */
+  incomeStatement: ReportLineItem[];
+  /** Cash flow statement line items. */
+  cashFlow: ReportLineItem[];
+}
+
+// -- Earnings ------------------------------------------------------------------
+
+export interface EarningsSurprise {
+  period: string | null;
+  year: number | null;
+  quarter: number | null;
+  epsActual: number | null;
+  epsEstimate: number | null;
+  /** Actual minus estimate, as reported by the provider. */
+  surprise: number | null;
+  surprisePercent: number | null;
+}
+
+export interface EarningsEvent {
+  symbol: string;
+  date: string | null;
+  year: number | null;
+  quarter: number | null;
+  /** "bmo" before open, "amc" after close, "dmh" during market hours. */
+  hour: string | null;
+  epsActual: number | null;
+  epsEstimate: number | null;
+  revenueActual: number | null;
+  revenueEstimate: number | null;
+}
+
+// -- Analyst recommendations ---------------------------------------------------
+
+export interface RecommendationTrend {
+  period: string | null;
+  strongBuy: number | null;
+  buy: number | null;
+  hold: number | null;
+  sell: number | null;
+  strongSell: number | null;
+}
+
+// -- Government contracts ------------------------------------------------------
+
+export interface GovernmentContract {
+  actionDate: string | null;
+  description: string | null;
+  awardingAgency: string | null;
+  awardingSubAgency: string | null;
+  awardingOffice: string | null;
+  recipientName: string | null;
+  recipientParentName: string | null;
+  /** Amount obligated to date. */
+  obligatedAmount: number | null;
+  /** Total current award value. */
+  totalValue: number | null;
+  /** Ceiling value including unexercised options. */
+  potentialAmount: number | null;
+  performanceStartDate: string | null;
+  performanceEndDate: string | null;
+  performanceState: string | null;
+  performanceCountry: string | null;
+  naicsCode: string | null;
+  /** Link to the award on USAspending. */
+  permalink: string | null;
+}
+
 // -- OHLC candles --------------------------------------------------------------
 
 export type CandleRange = "1D" | "1M" | "6M" | "1Y" | "MAX";

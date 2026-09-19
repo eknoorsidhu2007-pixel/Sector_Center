@@ -12,7 +12,21 @@
  */
 
 import type { CompanyMatch, NewsArticle } from "../types";
-import type { Candle, CandleRange, CompanyProfile, KeyMetrics, Quote } from "./types";
+import type {
+  Candle,
+  CandleRange,
+  CompanyProfile,
+  EarningsEvent,
+  EarningsSurprise,
+  FinancialReport,
+  GovernmentContract,
+  InsiderSentimentPoint,
+  InsiderTransaction,
+  KeyMetrics,
+  Quote,
+  RecommendationTrend,
+  SecFiling,
+} from "./types";
 
 export interface MarketDataProvider {
   /** Real-time-ish price snapshot. */
@@ -49,4 +63,59 @@ export interface MarketDataProvider {
    * clear message rather than returning an empty array.
    */
   getCandles(symbol: string, range: CandleRange): Promise<Candle[]>;
+
+  /** Peer tickers in the same country and sub-industry. */
+  getPeers(symbol: string): Promise<string[]>;
+
+  /**
+   * Insider transactions from Form 3/4/5, newest first. Each entry carries the
+   * raw SEC transaction code plus a semantic `kind`, so callers can separate
+   * conviction trades from compensation mechanics.
+   */
+  getInsiderTransactions(
+    symbol: string,
+    lookbackDays: number
+  ): Promise<InsiderTransaction[]>;
+
+  /** Monthly insider sentiment (MSPR), newest first. */
+  getInsiderSentiment(
+    symbol: string,
+    lookbackMonths: number
+  ): Promise<InsiderSentimentPoint[]>;
+
+  /** Recent SEC filings, newest first. */
+  getFilings(symbol: string, limit?: number): Promise<SecFiling[]>;
+
+  /**
+   * Financial statements exactly as the company tagged them, newest first.
+   * Values are never normalized across filers; labels and concepts are the
+   * filer's own.
+   */
+  getFinancialReports(
+    symbol: string,
+    frequency: "annual" | "quarterly",
+    limit?: number
+  ): Promise<FinancialReport[]>;
+
+  /** Historical quarterly EPS surprises, newest first. */
+  getEarningsSurprises(symbol: string): Promise<EarningsSurprise[]>;
+
+  /**
+   * Earnings releases in a window around today. Negative `pastDays` and
+   * positive `futureDays` bracket the search.
+   */
+  getEarningsCalendar(
+    symbol: string,
+    pastDays: number,
+    futureDays: number
+  ): Promise<EarningsEvent[]>;
+
+  /** Analyst recommendation counts by period, newest first. */
+  getRecommendations(symbol: string): Promise<RecommendationTrend[]>;
+
+  /** US federal contract awards, newest first. */
+  getGovernmentContracts(
+    symbol: string,
+    lookbackDays: number
+  ): Promise<GovernmentContract[]>;
 }

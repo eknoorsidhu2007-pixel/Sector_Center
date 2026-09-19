@@ -19,4 +19,33 @@ export function getMarketData(): MarketDataProvider {
 }
 
 export type { MarketDataProvider } from "./provider";
-export type { Candle, CandleRange, CompanyProfile, KeyMetrics, Quote } from "./types";
+export type {
+  Candle,
+  CandleRange,
+  CompanyProfile,
+  DividendMetrics,
+  EarningsEvent,
+  EarningsSurprise,
+  EfficiencyMetrics,
+  FinancialHealthMetrics,
+  FinancialReport,
+  GovernmentContract,
+  GrowthMetrics,
+  InsiderSentimentPoint,
+  InsiderTransaction,
+  InsiderTransactionKind,
+  KeyMetrics,
+  MarginMetrics,
+  MetricSeries,
+  MetricSeriesPoint,
+  PerShareMetrics,
+  PriceReturnMetrics,
+  Quote,
+  RecommendationTrend,
+  RelativePerformanceMetrics,
+  ReportLineItem,
+  ReturnMetrics,
+  SecFiling,
+  ValuationMetrics,
+} from "./types";
+export { metricSeries } from "./types";
