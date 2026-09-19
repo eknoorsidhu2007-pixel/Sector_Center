@@ -24,7 +24,13 @@ import { cleanForDisplay } from "../news/text";
 import type { CompanyMatch, NewsArticle } from "../types";
 import { cached } from "./cache";
 import type { MarketDataProvider } from "./provider";
-import type { Candle, CompanyProfile, KeyMetrics, Quote } from "./types";
+import type {
+  Candle,
+  CompanyProfile,
+  KeyMetrics,
+  MetricSeriesPoint,
+  Quote,
+} from "./types";
 
 const MILLION = 1_000_000;
 
@@ -63,20 +69,137 @@ interface FinnhubProfile {
   weburl?: string;
 }
 
+/**
+ * `/stock/metric?metric=all` returns ~133 point-in-time fields plus a `series`
+ * map of historical ratios. Only the fields Sector Center actually maps are
+ * enumerated here; the rest are ignored rather than silently passed through.
+ *
+ * Several upstream names need quoting because they contain `/` or `&`. They
+ * are reproduced exactly as Finnhub sends them.
+ */
+interface FinnhubMetricMap {
+  "52WeekHigh"?: number;
+  "52WeekLow"?: number;
+  "52WeekHighDate"?: string;
+  "52WeekLowDate"?: string;
+  beta?: number;
+  "10DayAverageTradingVolume"?: number; // millions
+  "3MonthAverageTradingVolume"?: number; // millions
+  "3MonthADReturnStd"?: number;
+
+  // Valuation
+  peTTM?: number;
+  peBasicExclExtraTTM?: number;
+  peAnnual?: number;
+  forwardPE?: number;
+  pegTTM?: number;
+  forwardPEG?: number;
+  psTTM?: number;
+  pb?: number;
+  pbQuarterly?: number;
+  ptbvQuarterly?: number;
+  pfcfShareTTM?: number;
+  pcfShareTTM?: number;
+  evEbitdaTTM?: number;
+  evRevenueTTM?: number;
+  "currentEv/freeCashFlowTTM"?: number;
+  enterpriseValue?: number; // millions
+
+  // Earnings per share
+  epsTTM?: number;
+  epsBasicExclExtraItemsTTM?: number;
+
+  // Margins
+  grossMarginTTM?: number;
+  grossMargin5Y?: number;
+  operatingMarginTTM?: number;
+  operatingMargin5Y?: number;
+  netProfitMarginTTM?: number;
+  netProfitMargin5Y?: number;
+  pretaxMarginTTM?: number;
+  pretaxMargin5Y?: number;
+
+  // Returns
+  roeTTM?: number;
+  roe5Y?: number;
+  roaTTM?: number;
+  roa5Y?: number;
+  roiTTM?: number;
+  roi5Y?: number;
+
+  // Growth
+  revenueGrowthTTMYoy?: number;
+  revenueGrowthQuarterlyYoy?: number;
+  revenueGrowth3Y?: number;
+  revenueGrowth5Y?: number;
+  epsGrowthTTMYoy?: number;
+  epsGrowthQuarterlyYoy?: number;
+  epsGrowth3Y?: number;
+  epsGrowth5Y?: number;
+  ebitdaCagr5Y?: number;
+  focfCagr5Y?: number;
+  capexCagr5Y?: number;
+
+  // Financial health
+  currentRatioQuarterly?: number;
+  currentRatioAnnual?: number;
+  quickRatioQuarterly?: number;
+  quickRatioAnnual?: number;
+  "longTermDebt/equityQuarterly"?: number;
+  "totalDebt/totalEquityQuarterly"?: number;
+  netInterestCoverageTTM?: number;
+
+  // Per share
+  revenuePerShareTTM?: number;
+  bookValuePerShareQuarterly?: number;
+  tangibleBookValuePerShareQuarterly?: number;
+  cashFlowPerShareTTM?: number;
+  cashPerSharePerShareQuarterly?: number;
+  ebitdPerShareTTM?: number;
+
+  // Dividends
+  dividendYieldIndicatedAnnual?: number;
+  currentDividendYieldTTM?: number;
+  dividendPerShareTTM?: number;
+  dividendPerShareAnnual?: number;
+  dividendIndicatedAnnual?: number;
+  payoutRatioTTM?: number;
+  dividendGrowthRate5Y?: number;
+
+  // Price returns
+  "5DayPriceReturnDaily"?: number;
+  "13WeekPriceReturnDaily"?: number;
+  "26WeekPriceReturnDaily"?: number;
+  "52WeekPriceReturnDaily"?: number;
+  monthToDatePriceReturnDaily?: number;
+  yearToDatePriceReturnDaily?: number;
+
+  // Relative to S&P 500
+  "priceRelativeToS&P5004Week"?: number;
+  "priceRelativeToS&P50013Week"?: number;
+  "priceRelativeToS&P50026Week"?: number;
+  "priceRelativeToS&P50052Week"?: number;
+  "priceRelativeToS&P500Ytd"?: number;
+
+  // Efficiency
+  assetTurnoverTTM?: number;
+  inventoryTurnoverTTM?: number;
+  receivablesTurnoverTTM?: number;
+  revenueEmployeeTTM?: number;
+  netIncomeEmployeeTTM?: number;
+}
+
+/** Raw series point: `period` is a date string, `v` the value. */
+interface FinnhubSeriesPoint {
+  period?: string;
+  v?: number;
+}
+
 interface FinnhubMetricResponse {
-  metric?: {
-    "52WeekHigh"?: number;
-    "52WeekLow"?: number;
-    "52WeekHighDate"?: string;
-    "52WeekLowDate"?: string;
-    peTTM?: number;
-    peBasicExclExtraTTM?: number;
-    epsTTM?: number;
-    epsBasicExclExtraItemsTTM?: number;
-    dividendYieldIndicatedAnnual?: number;
-    beta?: number;
-    "10DayAverageTradingVolume"?: number; // millions
-    "3MonthAverageTradingVolume"?: number; // millions
+  metric?: FinnhubMetricMap;
+  series?: {
+    annual?: Record<string, FinnhubSeriesPoint[]>;
+    quarterly?: Record<string, FinnhubSeriesPoint[]>;
   };
 }
 
@@ -106,6 +229,45 @@ function str(value: unknown): string | null {
 
 function toDateParam(date: Date): string {
   return date.toISOString().split("T")[0];
+}
+
+/**
+ * Normalizes Finnhub's `{ period, v }` series points into domain points,
+ * dropping any without both a period and a finite value, and sorting newest
+ * first so callers can take the head for "latest".
+ */
+function toMetricSeries(
+  raw: Record<string, FinnhubSeriesPoint[]> | undefined
+): Record<string, MetricSeriesPoint[]> {
+  if (!raw) {
+    return {};
+  }
+
+  const result: Record<string, MetricSeriesPoint[]> = {};
+
+  for (const [concept, points] of Object.entries(raw)) {
+    if (!Array.isArray(points)) {
+      continue;
+    }
+
+    const cleaned: MetricSeriesPoint[] = [];
+
+    for (const point of points) {
+      const period = str(point?.period);
+      const value = num(point?.v);
+
+      if (period !== null && value !== null) {
+        cleaned.push({ period, value });
+      }
+    }
+
+    if (cleaned.length > 0) {
+      cleaned.sort((a, b) => b.period.localeCompare(a.period));
+      result[concept] = cleaned;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -200,6 +362,7 @@ export const finnhubProvider: MarketDataProvider = {
       const metric = raw.metric ?? {};
       const vol10 = num(metric["10DayAverageTradingVolume"]);
       const vol3m = num(metric["3MonthAverageTradingVolume"]);
+      const evMillions = num(metric.enterpriseValue);
 
       return {
         week52High: num(metric["52WeekHigh"]),
@@ -212,6 +375,119 @@ export const finnhubProvider: MarketDataProvider = {
         beta: num(metric.beta),
         avgVolume10Day: vol10 !== null ? vol10 * MILLION : null,
         avgVolume3Month: vol3m !== null ? vol3m * MILLION : null,
+        volatility3Month: num(metric["3MonthADReturnStd"]),
+
+        valuation: {
+          peTTM: num(metric.peTTM) ?? num(metric.peBasicExclExtraTTM),
+          peAnnual: num(metric.peAnnual),
+          forwardPE: num(metric.forwardPE),
+          pegTTM: num(metric.pegTTM),
+          forwardPEG: num(metric.forwardPEG),
+          priceToSalesTTM: num(metric.psTTM),
+          priceToBook: num(metric.pbQuarterly) ?? num(metric.pb),
+          priceToTangibleBook: num(metric.ptbvQuarterly),
+          priceToFreeCashFlowTTM: num(metric.pfcfShareTTM),
+          priceToCashFlowTTM: num(metric.pcfShareTTM),
+          evToEbitdaTTM: num(metric.evEbitdaTTM),
+          evToRevenueTTM: num(metric.evRevenueTTM),
+          evToFreeCashFlowTTM: num(metric["currentEv/freeCashFlowTTM"]),
+          enterpriseValue: evMillions !== null ? evMillions * MILLION : null,
+        },
+
+        margins: {
+          grossMarginTTM: num(metric.grossMarginTTM),
+          grossMargin5Y: num(metric.grossMargin5Y),
+          operatingMarginTTM: num(metric.operatingMarginTTM),
+          operatingMargin5Y: num(metric.operatingMargin5Y),
+          netMarginTTM: num(metric.netProfitMarginTTM),
+          netMargin5Y: num(metric.netProfitMargin5Y),
+          pretaxMarginTTM: num(metric.pretaxMarginTTM),
+          pretaxMargin5Y: num(metric.pretaxMargin5Y),
+        },
+
+        returns: {
+          roeTTM: num(metric.roeTTM),
+          roe5Y: num(metric.roe5Y),
+          roaTTM: num(metric.roaTTM),
+          roa5Y: num(metric.roa5Y),
+          roiTTM: num(metric.roiTTM),
+          roi5Y: num(metric.roi5Y),
+        },
+
+        growth: {
+          revenueGrowthTTMYoy: num(metric.revenueGrowthTTMYoy),
+          revenueGrowthQuarterlyYoy: num(metric.revenueGrowthQuarterlyYoy),
+          revenueGrowth3Y: num(metric.revenueGrowth3Y),
+          revenueGrowth5Y: num(metric.revenueGrowth5Y),
+          epsGrowthTTMYoy: num(metric.epsGrowthTTMYoy),
+          epsGrowthQuarterlyYoy: num(metric.epsGrowthQuarterlyYoy),
+          epsGrowth3Y: num(metric.epsGrowth3Y),
+          epsGrowth5Y: num(metric.epsGrowth5Y),
+          ebitdaCagr5Y: num(metric.ebitdaCagr5Y),
+          freeOperatingCashFlowCagr5Y: num(metric.focfCagr5Y),
+          capexCagr5Y: num(metric.capexCagr5Y),
+        },
+
+        health: {
+          currentRatioQuarterly: num(metric.currentRatioQuarterly),
+          currentRatioAnnual: num(metric.currentRatioAnnual),
+          quickRatioQuarterly: num(metric.quickRatioQuarterly),
+          quickRatioAnnual: num(metric.quickRatioAnnual),
+          longTermDebtToEquityQuarterly: num(metric["longTermDebt/equityQuarterly"]),
+          totalDebtToEquityQuarterly: num(metric["totalDebt/totalEquityQuarterly"]),
+          netInterestCoverageTTM: num(metric.netInterestCoverageTTM),
+        },
+
+        perShare: {
+          revenuePerShareTTM: num(metric.revenuePerShareTTM),
+          bookValuePerShareQuarterly: num(metric.bookValuePerShareQuarterly),
+          tangibleBookValuePerShareQuarterly: num(
+            metric.tangibleBookValuePerShareQuarterly
+          ),
+          cashFlowPerShareTTM: num(metric.cashFlowPerShareTTM),
+          cashPerShareQuarterly: num(metric.cashPerSharePerShareQuarterly),
+          ebitdaPerShareTTM: num(metric.ebitdPerShareTTM),
+        },
+
+        dividend: {
+          yieldIndicatedAnnual: num(metric.dividendYieldIndicatedAnnual),
+          currentYieldTTM: num(metric.currentDividendYieldTTM),
+          perShareTTM: num(metric.dividendPerShareTTM),
+          perShareAnnual: num(metric.dividendPerShareAnnual),
+          indicatedAnnual: num(metric.dividendIndicatedAnnual),
+          payoutRatioTTM: num(metric.payoutRatioTTM),
+          growthRate5Y: num(metric.dividendGrowthRate5Y),
+        },
+
+        priceReturns: {
+          fiveDay: num(metric["5DayPriceReturnDaily"]),
+          thirteenWeek: num(metric["13WeekPriceReturnDaily"]),
+          twentySixWeek: num(metric["26WeekPriceReturnDaily"]),
+          fiftyTwoWeek: num(metric["52WeekPriceReturnDaily"]),
+          monthToDate: num(metric.monthToDatePriceReturnDaily),
+          yearToDate: num(metric.yearToDatePriceReturnDaily),
+        },
+
+        relativePerformance: {
+          fourWeek: num(metric["priceRelativeToS&P5004Week"]),
+          thirteenWeek: num(metric["priceRelativeToS&P50013Week"]),
+          twentySixWeek: num(metric["priceRelativeToS&P50026Week"]),
+          fiftyTwoWeek: num(metric["priceRelativeToS&P50052Week"]),
+          yearToDate: num(metric["priceRelativeToS&P500Ytd"]),
+        },
+
+        efficiency: {
+          assetTurnoverTTM: num(metric.assetTurnoverTTM),
+          inventoryTurnoverTTM: num(metric.inventoryTurnoverTTM),
+          receivablesTurnoverTTM: num(metric.receivablesTurnoverTTM),
+          revenuePerEmployeeTTM: num(metric.revenueEmployeeTTM),
+          netIncomePerEmployeeTTM: num(metric.netIncomeEmployeeTTM),
+        },
+
+        series: {
+          annual: toMetricSeries(raw.series?.annual),
+          quarterly: toMetricSeries(raw.series?.quarterly),
+        },
       };
     });
   },
