@@ -22,10 +22,18 @@ import { finnhubFetch } from "../finnhub";
 import { getSymbolIndex, searchCompanies } from "../symbols";
 import { cleanForDisplay } from "../news/text";
 import type { CompanyMatch, NewsArticle } from "../types";
+import { cached } from "./cache";
 import type { MarketDataProvider } from "./provider";
 import type { CompanyProfile, KeyMetrics, Quote } from "./types";
 
 const MILLION = 1_000_000;
+
+// In-memory TTLs mirror the `revalidate` values passed to finnhubFetch so
+// the two caches agree on freshness.
+const TTL_QUOTE_MS = 60_000; // 1 min
+const TTL_PROFILE_MS = 86_400_000; // 24 h
+const TTL_METRICS_MS = 21_600_000; // 6 h
+const TTL_NEWS_MS = 300_000; // 5 min
 
 // -- Finnhub response shapes (what the wire actually looks like) ------------
 
@@ -129,107 +137,115 @@ function toArticle(item: FinnhubNewsItem): NewsArticle | null {
 
 export const finnhubProvider: MarketDataProvider = {
   async getQuote(symbol: string): Promise<Quote> {
-    const raw = await finnhubFetch<FinnhubQuote>(
-      "/quote",
-      { symbol },
-      { revalidate: 60 }
-    );
+    return cached(`quote:${symbol}`, TTL_QUOTE_MS, async () => {
+      const raw = await finnhubFetch<FinnhubQuote>(
+        "/quote",
+        { symbol },
+        { revalidate: 60 }
+      );
 
-    return {
-      currentPrice: num(raw.c),
-      change: num(raw.d),
-      changePercent: num(raw.dp),
-      open: num(raw.o),
-      high: num(raw.h),
-      low: num(raw.l),
-      previousClose: num(raw.pc),
-      timestamp:
-        typeof raw.t === "number" && raw.t > 0
-          ? new Date(raw.t * 1000).toISOString()
-          : null,
-    };
+      return {
+        currentPrice: num(raw.c),
+        change: num(raw.d),
+        changePercent: num(raw.dp),
+        open: num(raw.o),
+        high: num(raw.h),
+        low: num(raw.l),
+        previousClose: num(raw.pc),
+        timestamp:
+          typeof raw.t === "number" && raw.t > 0
+            ? new Date(raw.t * 1000).toISOString()
+            : null,
+      };
+    });
   },
 
   async getProfile(symbol: string): Promise<CompanyProfile> {
-    const raw = await finnhubFetch<FinnhubProfile>(
-      "/stock/profile2",
-      { symbol },
-      { revalidate: 86_400 } // 24h — effectively static
-    );
+    return cached(`profile:${symbol}`, TTL_PROFILE_MS, async () => {
+      const raw = await finnhubFetch<FinnhubProfile>(
+        "/stock/profile2",
+        { symbol },
+        { revalidate: 86_400 }
+      );
 
-    const marketCapMillions = num(raw.marketCapitalization);
-    const sharesMillions = num(raw.shareOutstanding);
-    const floatMillions = num(raw.floatingShare);
+      const marketCapMillions = num(raw.marketCapitalization);
+      const sharesMillions = num(raw.shareOutstanding);
+      const floatMillions = num(raw.floatingShare);
 
-    return {
-      ticker: str(raw.ticker) ?? symbol,
-      name: str(raw.name),
-      exchange: str(raw.exchange),
-      industry: str(raw.finnhubIndustry),
-      country: str(raw.country),
-      currency: str(raw.currency),
-      ipoDate: str(raw.ipo),
-      marketCap: marketCapMillions !== null ? marketCapMillions * MILLION : null,
-      sharesOutstanding: sharesMillions !== null ? sharesMillions * MILLION : null,
-      floatingShares: floatMillions !== null ? floatMillions * MILLION : null,
-      logoUrl: str(raw.logo),
-      webUrl: str(raw.weburl),
-    };
+      return {
+        ticker: str(raw.ticker) ?? symbol,
+        name: str(raw.name),
+        exchange: str(raw.exchange),
+        industry: str(raw.finnhubIndustry),
+        country: str(raw.country),
+        currency: str(raw.currency),
+        ipoDate: str(raw.ipo),
+        marketCap: marketCapMillions !== null ? marketCapMillions * MILLION : null,
+        sharesOutstanding: sharesMillions !== null ? sharesMillions * MILLION : null,
+        floatingShares: floatMillions !== null ? floatMillions * MILLION : null,
+        logoUrl: str(raw.logo),
+        webUrl: str(raw.weburl),
+      };
+    });
   },
 
   async getKeyMetrics(symbol: string): Promise<KeyMetrics> {
-    const raw = await finnhubFetch<FinnhubMetricResponse>(
-      "/stock/metric",
-      { symbol, metric: "all" },
-      { revalidate: 21_600 } // 6h — fundamentals move slowly
-    );
+    return cached(`metrics:${symbol}`, TTL_METRICS_MS, async () => {
+      const raw = await finnhubFetch<FinnhubMetricResponse>(
+        "/stock/metric",
+        { symbol, metric: "all" },
+        { revalidate: 21_600 }
+      );
 
-    const metric = raw.metric ?? {};
-    const vol10 = num(metric["10DayAverageTradingVolume"]);
-    const vol3m = num(metric["3MonthAverageTradingVolume"]);
+      const metric = raw.metric ?? {};
+      const vol10 = num(metric["10DayAverageTradingVolume"]);
+      const vol3m = num(metric["3MonthAverageTradingVolume"]);
 
-    return {
-      week52High: num(metric["52WeekHigh"]),
-      week52Low: num(metric["52WeekLow"]),
-      week52HighDate: str(metric["52WeekHighDate"]),
-      week52LowDate: str(metric["52WeekLowDate"]),
-      peRatioTTM: num(metric.peTTM) ?? num(metric.peBasicExclExtraTTM),
-      epsTTM: num(metric.epsTTM) ?? num(metric.epsBasicExclExtraItemsTTM),
-      dividendYieldAnnual: num(metric.dividendYieldIndicatedAnnual),
-      beta: num(metric.beta),
-      avgVolume10Day: vol10 !== null ? vol10 * MILLION : null,
-      avgVolume3Month: vol3m !== null ? vol3m * MILLION : null,
-    };
+      return {
+        week52High: num(metric["52WeekHigh"]),
+        week52Low: num(metric["52WeekLow"]),
+        week52HighDate: str(metric["52WeekHighDate"]),
+        week52LowDate: str(metric["52WeekLowDate"]),
+        peRatioTTM: num(metric.peTTM) ?? num(metric.peBasicExclExtraTTM),
+        epsTTM: num(metric.epsTTM) ?? num(metric.epsBasicExclExtraItemsTTM),
+        dividendYieldAnnual: num(metric.dividendYieldIndicatedAnnual),
+        beta: num(metric.beta),
+        avgVolume10Day: vol10 !== null ? vol10 * MILLION : null,
+        avgVolume3Month: vol3m !== null ? vol3m * MILLION : null,
+      };
+    });
   },
 
   async getCompanyNews(symbol: string, lookbackDays: number): Promise<NewsArticle[]> {
-    const to = new Date();
-    const from = new Date(to);
-    from.setDate(to.getDate() - lookbackDays);
+    return cached(`news:${symbol}:${lookbackDays}`, TTL_NEWS_MS, async () => {
+      const to = new Date();
+      const from = new Date(to);
+      from.setDate(to.getDate() - lookbackDays);
 
-    const raw = await finnhubFetch<FinnhubNewsItem[]>(
-      "/company-news",
-      { symbol, from: toDateParam(from), to: toDateParam(to) },
-      { revalidate: 300 }
-    );
+      const raw = await finnhubFetch<FinnhubNewsItem[]>(
+        "/company-news",
+        { symbol, from: toDateParam(from), to: toDateParam(to) },
+        { revalidate: 300 }
+      );
 
-    if (!Array.isArray(raw)) {
-      return [];
-    }
-
-    const seenIds = new Set<number>();
-    const articles: NewsArticle[] = [];
-
-    for (const item of raw) {
-      const article = toArticle(item);
-
-      if (article && !seenIds.has(article.id)) {
-        seenIds.add(article.id);
-        articles.push(article);
+      if (!Array.isArray(raw)) {
+        return [];
       }
-    }
 
-    return articles;
+      const seenIds = new Set<number>();
+      const articles: NewsArticle[] = [];
+
+      for (const item of raw) {
+        const article = toArticle(item);
+
+        if (article && !seenIds.has(article.id)) {
+          seenIds.add(article.id);
+          articles.push(article);
+        }
+      }
+
+      return articles;
+    });
   },
 
   async resolveCompanyName(symbol: string): Promise<string | null> {
