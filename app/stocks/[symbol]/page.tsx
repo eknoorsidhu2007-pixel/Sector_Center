@@ -2,20 +2,44 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getMarketData } from "@/lib/market";
-import type { CompanyProfile, KeyMetrics, Quote } from "@/lib/market";
 import PriceChart from "@/components/PriceChart";
+import AnalystRatings from "@/components/stock/AnalystRatings";
+import EarningsSummary from "@/components/stock/EarningsSummary";
+import FilingsList from "@/components/stock/FilingsList";
+import GovernmentContracts from "@/components/stock/GovernmentContracts";
+import HistoricalContext from "@/components/stock/HistoricalContext";
+import InsiderActivity from "@/components/stock/InsiderActivity";
+import MetricGrid from "@/components/stock/MetricGrid";
+import PeerComparison from "@/components/stock/PeerComparison";
+import Section from "@/components/stock/Section";
 import {
   formatChange,
   formatChangePercent,
   formatDateValue,
-  formatLargeNumber,
-  formatPercentValue,
   formatPrice,
-  formatRatio,
-  formatVolume,
 } from "@/lib/format";
+import { getMarketData } from "@/lib/market";
 import { normalizeSymbol } from "@/lib/validation";
+
+const INSIDER_LOOKBACK_DAYS = 180;
+const CONTRACT_LOOKBACK_DAYS = 365;
+const EARNINGS_PAST_DAYS = 120;
+const EARNINGS_FUTURE_DAYS = 120;
+
+/** Unwraps an allSettled result, logging and nulling out failures. */
+function settled<T>(
+  result: PromiseSettledResult<T>,
+  label: string,
+  symbol: string
+): T | null {
+  if (result.status === "fulfilled") {
+    return result.value;
+  }
+
+  console.error(`${label} unavailable for ${symbol}:`, result.reason);
+
+  return null;
+}
 
 export async function generateMetadata(
   props: PageProps<"/stocks/[symbol]">
@@ -32,7 +56,7 @@ export async function generateMetadata(
 
   return {
     title: `${label} — Sector Center`,
-    description: `Price, key metrics, and latest news for ${label}.`,
+    description: `Price, fundamentals, insider activity, filings, and news for ${label}.`,
   };
 }
 
@@ -46,25 +70,40 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
 
   const market = getMarketData();
 
-  const [quoteResult, profileResult, metricsResult] = await Promise.allSettled([
+  // Every section is fetched in parallel and independently settled, so one
+  // failing or rate-limited endpoint degrades that section rather than the
+  // page. Per-endpoint caching in lib/market/cache.ts means a warm load
+  // makes no upstream requests at all.
+  const [
+    quoteResult,
+    profileResult,
+    metricsResult,
+    peersResult,
+    insiderResult,
+    filingsResult,
+    surprisesResult,
+    calendarResult,
+    recommendResult,
+    contractsResult,
+  ] = await Promise.allSettled([
     market.getQuote(symbol),
     market.getProfile(symbol),
     market.getKeyMetrics(symbol),
+    market.getPeers(symbol),
+    market.getInsiderTransactions(symbol, INSIDER_LOOKBACK_DAYS),
+    market.getFilings(symbol),
+    market.getEarningsSurprises(symbol),
+    market.getEarningsCalendar(symbol, EARNINGS_PAST_DAYS, EARNINGS_FUTURE_DAYS),
+    market.getRecommendations(symbol),
+    market.getGovernmentContracts(symbol, CONTRACT_LOOKBACK_DAYS),
   ]);
 
-  const quote: Quote | null =
-    quoteResult.status === "fulfilled" ? quoteResult.value : null;
-  const profile: CompanyProfile | null =
-    profileResult.status === "fulfilled" ? profileResult.value : null;
-  const metrics: KeyMetrics | null =
-    metricsResult.status === "fulfilled" ? metricsResult.value : null;
+  const quote = settled(quoteResult, "Quote", symbol);
+  const profile = settled(profileResult, "Profile", symbol);
+  const metrics = settled(metricsResult, "Key metrics", symbol);
 
   // Finnhub returns empty objects for symbols that pass format validation but
   // do not exist. If there is no price and no company name, treat it as a 404.
-  if (!quote && !profile && !metrics) {
-    notFound();
-  }
-
   const symbolExists =
     (quote?.currentPrice != null && quote.currentPrice > 0) ||
     profile?.name != null;
@@ -73,31 +112,20 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
     notFound();
   }
 
+  const peers = settled(peersResult, "Peers", symbol) ?? [];
+  const insiderTransactions = settled(insiderResult, "Insider activity", symbol) ?? [];
+  const filings = settled(filingsResult, "Filings", symbol) ?? [];
+  const surprises = settled(surprisesResult, "Earnings surprises", symbol) ?? [];
+  const calendar = settled(calendarResult, "Earnings calendar", symbol) ?? [];
+  const recommendations = settled(recommendResult, "Recommendations", symbol) ?? [];
+  const contracts = settled(contractsResult, "Government contracts", symbol) ?? [];
+
   const companyName = profile?.name ?? symbol;
   const currency = profile?.currency ?? "USD";
   const isPositive = (quote?.change ?? 0) >= 0;
 
-  // Historical context — derived from data already on this page, no extra
-  // API calls. Each line is omitted when its inputs are null.
-  const currentPrice = quote?.currentPrice ?? null;
-  const week52High = metrics?.week52High ?? null;
-  const week52Low = metrics?.week52Low ?? null;
-
-  const pctBelowHigh =
-    currentPrice !== null && week52High !== null && week52High > 0
-      ? ((week52High - currentPrice) / week52High) * 100
-      : null;
-
-  const pctAboveLow =
-    currentPrice !== null && week52Low !== null && week52Low > 0
-      ? ((currentPrice - week52Low) / week52Low) * 100
-      : null;
-
-  const hasContext = pctBelowHigh !== null || pctAboveLow !== null;
-
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-      {/* Breadcrumb */}
       <nav aria-label="Breadcrumb" className="mb-6">
         <Link
           href="/"
@@ -107,7 +135,6 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
         </Link>
       </nav>
 
-      {/* Company header */}
       <header className="mb-8">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
@@ -134,7 +161,6 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
         </div>
       </header>
 
-      {/* Price section */}
       <section className="mb-8" aria-label="Price">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <span className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
@@ -159,103 +185,54 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
         )}
       </section>
 
-      {/* Price chart */}
       <section className="mb-8" aria-label="Price chart">
         <PriceChart symbol={symbol} />
       </section>
 
-      {/* Key metrics grid */}
-      <section className="mb-8" aria-label="Key metrics">
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-800">
-          <MetricCell label="Market Cap" value={formatLargeNumber(profile?.marketCap ?? null, currency)} />
-          <MetricCell
-            label="52W High"
-            value={formatPrice(metrics?.week52High ?? null, currency)}
-            sub={formatDateValue(metrics?.week52HighDate ?? null)}
-          />
-          <MetricCell
-            label="52W Low"
-            value={formatPrice(metrics?.week52Low ?? null, currency)}
-            sub={formatDateValue(metrics?.week52LowDate ?? null)}
-          />
-          <MetricCell label="P/E (TTM)" value={formatRatio(metrics?.peRatioTTM ?? null)} />
-          <MetricCell label="EPS (TTM)" value={formatPrice(metrics?.epsTTM ?? null, currency)} />
-          <MetricCell label="Beta" value={formatRatio(metrics?.beta ?? null)} />
-          <MetricCell label="Div Yield" value={formatPercentValue(metrics?.dividendYieldAnnual ?? null)} />
-          <MetricCell label="Avg Vol (10D)" value={formatVolume(metrics?.avgVolume10Day ?? null)} />
-          <MetricCell label="Shares Out" value={formatVolume(profile?.sharesOutstanding ?? null)} />
-        </div>
-      </section>
+      <Section
+        title="Key Metrics"
+        description="Trailing and annual figures. An em-dash means the provider did not report the value."
+      >
+        <MetricGrid profile={profile} metrics={metrics} currency={currency} />
+      </Section>
 
-      {/* Historical context */}
-      {hasContext && (
-        <section className="mb-8" aria-label="Historical context">
-          <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-              Historical Context
-            </h2>
-            <ul className="mt-3 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-              {pctBelowHigh !== null && (
-                <li>
-                  {pctBelowHigh < 0.005
-                    ? "At 52-week high"
-                    : `${pctBelowHigh.toFixed(1)}% below 52-week high of ${formatPrice(week52High, currency)}`}
-                </li>
-              )}
-              {pctAboveLow !== null && (
-                <li>
-                  {pctAboveLow < 0.005
-                    ? "At 52-week low"
-                    : `${pctAboveLow.toFixed(1)}% above 52-week low of ${formatPrice(week52Low, currency)}`}
-                </li>
-              )}
-            </ul>
-          </div>
-        </section>
-      )}
+      <HistoricalContext quote={quote} metrics={metrics} currency={currency} />
 
-      {/* News section */}
-      <section aria-label="News">
-        <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-            Latest News
-          </h2>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Ranked, deduplicated coverage of {companyName} from the past 7 days.
-          </p>
-          <Link
-            href={`/news?symbol=${encodeURIComponent(symbol)}`}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
-          >
-            View latest news
-            <span aria-hidden="true">&rarr;</span>
-          </Link>
-        </div>
-      </section>
+      <EarningsSummary
+        surprises={surprises}
+        calendar={calendar}
+        currency={currency}
+      />
+
+      <AnalystRatings trends={recommendations} />
+
+      <InsiderActivity
+        transactions={insiderTransactions}
+        lookbackDays={INSIDER_LOOKBACK_DAYS}
+        currency={currency}
+      />
+
+      <GovernmentContracts
+        contracts={contracts}
+        lookbackDays={CONTRACT_LOOKBACK_DAYS}
+      />
+
+      <FilingsList filings={filings} />
+
+      <PeerComparison peers={peers} industry={profile?.industry ?? null} />
+
+      <Section
+        title="Latest News"
+        description={`Ranked, deduplicated coverage of ${companyName}.`}
+      >
+        <Link
+          href={`/news?symbol=${encodeURIComponent(symbol)}`}
+          className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+        >
+          View latest news
+          <span aria-hidden="true">&rarr;</span>
+        </Link>
+      </Section>
     </main>
-  );
-}
-
-function MetricCell({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="bg-white px-4 py-3 dark:bg-zinc-950">
-      <dt className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-        {label}
-      </dt>
-      <dd className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-        {value}
-      </dd>
-      {sub && sub !== "—" && (
-        <dd className="text-xs text-zinc-400 dark:text-zinc-500">{sub}</dd>
-      )}
-    </div>
   );
 }
