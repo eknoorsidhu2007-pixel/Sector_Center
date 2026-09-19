@@ -12,7 +12,7 @@
  */
 
 import type { CompanyMatch, NewsArticle } from "../types";
-import type { CompanyProfile, KeyMetrics, Quote } from "./types";
+import type { Candle, CandleRange, CompanyProfile, KeyMetrics, Quote } from "./types";
 
 export interface MarketDataProvider {
   /** Real-time-ish price snapshot. */
@@ -42,4 +42,11 @@ export interface MarketDataProvider {
    * no upstream request because the directory is already in memory.
    */
   searchCompanies(query: string, limit?: number): Promise<CompanyMatch[]>;
+
+  /**
+   * OHLC candles for charting. Not every vendor supports this on every plan;
+   * implementations that cannot serve candles should throw an error with a
+   * clear message rather than returning an empty array.
+   */
+  getCandles(symbol: string, range: CandleRange): Promise<Candle[]>;
 }

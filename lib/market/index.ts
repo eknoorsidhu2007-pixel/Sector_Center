@@ -1,17 +1,22 @@
 /**
  * Single accessor for the application's market-data provider.
  *
- * Today it always returns the Finnhub implementation. When a second vendor is
- * needed (e.g. for OHLC candles, which Finnhub gates behind a paid plan), this
- * is the only file that changes.
+ * Returns a composite: Finnhub serves quotes, profiles, metrics, news, and
+ * search; Twelve Data serves OHLC candles (Finnhub's /stock/candle 403s on
+ * the free tier). Consumers see one MarketDataProvider and never know which
+ * vendor handles which method.
  */
 
 import { finnhubProvider } from "./finnhub-provider";
+import { getCandles } from "./twelve-data-provider";
 import type { MarketDataProvider } from "./provider";
 
 export function getMarketData(): MarketDataProvider {
-  return finnhubProvider;
+  return {
+    ...finnhubProvider,
+    getCandles,
+  };
 }
 
 export type { MarketDataProvider } from "./provider";
-export type { CompanyProfile, KeyMetrics, Quote } from "./types";
+export type { Candle, CandleRange, CompanyProfile, KeyMetrics, Quote } from "./types";

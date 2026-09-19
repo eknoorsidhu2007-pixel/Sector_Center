@@ -58,3 +58,18 @@ export interface KeyMetrics {
   avgVolume10Day: number | null;
   avgVolume3Month: number | null;
 }
+
+// -- OHLC candles --------------------------------------------------------------
+
+export type CandleRange = "1D" | "1M" | "6M" | "1Y" | "MAX";
+
+export interface Candle {
+  /** Unix seconds (UTC), as expected by lightweight-charts. */
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  /** Null when the provider does not return volume for this bar. */
+  volume: number | null;
+}

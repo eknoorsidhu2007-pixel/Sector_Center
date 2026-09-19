@@ -24,7 +24,7 @@ import { cleanForDisplay } from "../news/text";
 import type { CompanyMatch, NewsArticle } from "../types";
 import { cached } from "./cache";
 import type { MarketDataProvider } from "./provider";
-import type { CompanyProfile, KeyMetrics, Quote } from "./types";
+import type { Candle, CompanyProfile, KeyMetrics, Quote } from "./types";
 
 const MILLION = 1_000_000;
 
@@ -263,5 +263,11 @@ export const finnhubProvider: MarketDataProvider = {
     const index = await getSymbolIndex();
 
     return searchCompanies(index, query, limit);
+  },
+
+  // Finnhub's /stock/candle returns 403 on the free tier. Candles are served
+  // by the Twelve Data provider instead — see lib/market/index.ts.
+  async getCandles(): Promise<Candle[]> {
+    throw new Error("Finnhub does not support OHLC candles on this plan");
   },
 };
