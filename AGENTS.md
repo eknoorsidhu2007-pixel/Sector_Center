@@ -66,7 +66,14 @@ lib/
 ├── format.ts
 ├── symbols.ts
 ├── types.ts
-└── validation.ts
+├── validation.ts
+└── news/
+    ├── aliases.ts
+    ├── classify.ts
+    ├── cluster.ts
+    ├── rank.ts
+    ├── relevance.ts
+    └── text.ts
 
 public/
 node_modules/
@@ -161,25 +168,36 @@ with `toApiError`.
 
 ### `app/api/news/route.ts`
 
-Server-side company news.
+Server-side company news with a deterministic quality pipeline.
 
 ```text
 /api/news?symbol=AAPL
 ```
 
-Returns a shaped, typed response rather than Finnhub's raw array:
+Pipeline order matters — fetch (7-day lookback, `revalidate: 300`) →
+shape/validate → relevance scoring → event classification → near-duplicate
+clustering → trader-focused ranking → cap. The cap is applied AFTER
+processing; the old cap-at-50-first behaviour discarded good articles while
+listicles took their slots.
 
-```json
-{ "symbol": "AAPL", "count": 50, "articles": [ { "id": 1, "headline": "...", "summary": "...", "url": "...", "source": "...", "imageUrl": null, "publishedAt": "2026-08-31T19:10:18.000Z" } ] }
-```
+Response shape (see `NewsResponse` in `lib/types.ts`):
 
-Behaviour:
+* `stories`: ranked clusters. Headline/summary/url come from a representative
+  article (best source tier, then most central headline, then earliest); each
+  story carries `eventTypes`, `relevance` ("primary" | "secondary"),
+  `sourceCount`/`sources`, first/latest timestamps, and the clustered
+  `articles`.
+* `peripheral` + `peripheralCount`: tangential articles (index listicles,
+  roundups, passing mentions). Demoted, never deleted; the UI keeps them
+  behind a collapsed section. `peripheral` is capped (15), the count is not.
+* `coverage`: "normal" | "light" | "none" for honest thin-coverage states.
+* `companyName`: resolved from the search index (`getSymbolIndex`, read-only)
+  at zero extra Finnhub cost. If the index is unavailable the feed degrades
+  to ticker-only relevance matching rather than failing.
 
-* Validates the symbol with `normalizeSymbol` from `lib/validation.ts`.
-  Malformed input returns 400 without reaching Finnhub.
-* Uses a 7-day lookback and `revalidate: 300`.
-* Drops articles missing a headline, URL, or timestamp.
-* Sorts newest first and caps at 50 articles.
+The pipeline lives in `lib/news/` as pure functions (text, aliases, relevance,
+classify, cluster, rank). All scoring internals stay server-side; the client
+receives tiers and badges, not numbers.
 
 ### `app/api/search/route.ts`
 
@@ -528,37 +546,51 @@ commit; it will simply come back on the next dev run.
 Company search is built. Typing "Apple" returns `Apple Inc / AAPL / NASDAQ`,
 selecting it loads that company's news, and the URL becomes `/news?symbol=AAPL`.
 
-The next priority is **news relevance and deduplication**, before any AI work.
+**News quality (Phase 3) is built.** Relevance scoring, event classification,
+near-duplicate clustering, and trader-focused ranking all run server-side in
+`app/api/news/route.ts` via pure functions in `lib/news/`. Measured on the
+live AAPL feed: 84 raw articles became 23 ranked stories with 44 peripheral
+articles demoted behind a collapsed section; the 13-article CEO-transition
+news cycle collapsed into a handful of correctly-headed clusters, and all
+seven ChartMill index listicles left the main feed without being deleted.
 
-### Why Relevance Comes Before AI
+Measured properties of the feed that the design relies on:
 
-Measured against the live feed for AAPL: of 84 articles returned, **43 (51%) do
-not mention Apple or any Apple product in the headline**. Examples returned under
-AAPL include "Top dow jones movers in Monday's session", "Broadcom reports
-earnings this week", and "Qualcomm Outperforms Broader Market Slump".
-
-Other measured properties of the data:
-
-* There were **zero exact duplicate headlines**, so exact-match deduplication
-  catches nothing. Near-duplicate clustering is required.
-* Finnhub's `related` field is `"AAPL"` on every article, so it carries no
-  relevance signal.
-* Finnhub's `category` field is `"company"` on every article, so it is useless
-  for classifying event types. We must classify ourselves.
+* Roughly half of a mega-cap's raw articles never mention the company in the
+  headline or summary (index membership, sector adjacency, and ownership links
+  all trigger Finnhub's tag). Headline is the dominant signal; summaries are
+  often attribution stubs and must never count AGAINST an article.
+* Finnhub wraps every URL in a `finnhub.io/api/news?id=...` redirect, so URLs
+  cannot identify the publisher and cannot anchor deduplication.
+* There are zero exact duplicate headlines, so exact-match dedup catches
+  nothing; clustering is textual (Jaccard/containment + shared distinctive
+  tokens), with a deliberate under-clustering bias.
+* Finnhub's `related` field is the query symbol echoed back and `category` is
+  always `"company"`; both are signal-free. Event classification is ours.
+* Dangerous tickers (`NOW`, `T`, `ALL`, `LOW`, `ON`, `ARE`, `HD`, `BIG`,
+  single letters, common words) never score on a bare ticker match; they need
+  name/alias corroboration. Verified: NOW/T/ALL/LOW produce zero
+  false-positive primary stories.
 * Only 4 sources appear on the free tier (Benzinga, CNBC, SeekingAlpha,
-  ChartMill). No Reuters, Bloomberg, or AP. Source coverage, not AI quality, is
-  the current ceiling on the product.
+  ChartMill). No Reuters, Bloomberg, or AP. Source coverage, not AI quality,
+  is the current ceiling on the product.
 
-Feeding that feed to a model would produce a confident, well-cited summary that
-is half about other companies. Relevance filtering, clustering, and ranking are
-deterministic, cost nothing per request, and are a prerequisite for the AI
-feature being either accurate or affordable.
+### Verification Gotcha: PowerShell Misdecodes UTF-8
+
+`Invoke-WebRequest`'s `.Content` decodes charset-less JSON as Latin-1, which
+makes clean UTF-8 smart quotes LOOK like mojibake ("Appleâ??s"). This was
+misdiagnosed as Finnhub data corruption during Phase 3. Verify at the byte
+level (`Invoke-WebRequest -OutFile` + UTF-8 decode) before "fixing" encoding
+bugs. `lib/news/text.ts` still repairs genuine double-encoded sequences as a
+defensive measure.
 
 ### Planned Order
 
-1. News relevance filtering, near-duplicate clustering, and ranking.
+1. ~~News relevance filtering, near-duplicate clustering, and ranking.~~ Done.
 2. AI briefing behind a feature flag, with structured output, required citations,
    deterministic validation, a persistent cache, and per-IP rate limiting.
+   Note: feed summaries are stubs, so a briefing will be headline-level unless
+   article-body fetching is solved separately.
 3. Accounts and watchlists (Supabase).
 4. Subscription tiers (Stripe).
 
