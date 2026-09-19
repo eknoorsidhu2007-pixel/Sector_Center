@@ -76,8 +76,36 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
   const currency = profile?.currency ?? "USD";
   const isPositive = (quote?.change ?? 0) >= 0;
 
+  // Historical context — derived from data already on this page, no extra
+  // API calls. Each line is omitted when its inputs are null.
+  const currentPrice = quote?.currentPrice ?? null;
+  const week52High = metrics?.week52High ?? null;
+  const week52Low = metrics?.week52Low ?? null;
+
+  const pctBelowHigh =
+    currentPrice !== null && week52High !== null && week52High > 0
+      ? ((week52High - currentPrice) / week52High) * 100
+      : null;
+
+  const pctAboveLow =
+    currentPrice !== null && week52Low !== null && week52Low > 0
+      ? ((currentPrice - week52Low) / week52Low) * 100
+      : null;
+
+  const hasContext = pctBelowHigh !== null || pctAboveLow !== null;
+
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb" className="mb-6">
+        <Link
+          href="/"
+          className="text-sm text-zinc-400 transition hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+        >
+          &larr; Sector Center
+        </Link>
+      </nav>
+
       {/* Company header */}
       <header className="mb-8">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -152,6 +180,33 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
           <MetricCell label="Shares Out" value={formatVolume(profile?.sharesOutstanding ?? null)} />
         </div>
       </section>
+
+      {/* Historical context */}
+      {hasContext && (
+        <section className="mb-8" aria-label="Historical context">
+          <div className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              Historical Context
+            </h2>
+            <ul className="mt-3 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
+              {pctBelowHigh !== null && (
+                <li>
+                  {pctBelowHigh < 0.005
+                    ? "At 52-week high"
+                    : `${pctBelowHigh.toFixed(1)}% below 52-week high of ${formatPrice(week52High, currency)}`}
+                </li>
+              )}
+              {pctAboveLow !== null && (
+                <li>
+                  {pctAboveLow < 0.005
+                    ? "At 52-week low"
+                    : `${pctAboveLow.toFixed(1)}% above 52-week low of ${formatPrice(week52Low, currency)}`}
+                </li>
+              )}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* News section */}
       <section aria-label="News">
