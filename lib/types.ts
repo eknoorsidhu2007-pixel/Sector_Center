@@ -62,6 +62,8 @@ export interface NewsResponse {
   symbol: string;
   /** Display name resolved from the search index, or null when unavailable. */
   companyName: string | null;
+  /** Lookback window actually used, in days, so the UI can state it honestly. */
+  lookbackDays: number;
   /** Number of ranked stories (clusters) in the main feed. */
   count: number;
   /** Total valid articles Finnhub returned before any scoring. */

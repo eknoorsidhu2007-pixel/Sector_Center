@@ -24,6 +24,20 @@ interface NewsFeed {
   peripheral: NewsArticle[];
   peripheralCount: number;
   coverage: NewsCoverage;
+  lookbackDays: number;
+}
+
+/** "7 days" / "30 days" / "1 year" for empty- and thin-coverage copy. */
+function windowLabel(days: number): string {
+  if (days >= 365) {
+    return "year";
+  }
+
+  if (days === 1) {
+    return "day";
+  }
+
+  return `${days} days`;
 }
 
 async function readErrorMessage(
@@ -111,6 +125,7 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
           peripheral: data.peripheral,
           peripheralCount: data.peripheralCount,
           coverage: data.coverage,
+          lookbackDays: data.lookbackDays,
         });
         setStatus("ready");
       } catch (error) {
@@ -257,16 +272,18 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
             </p>
           )}
 
-          {status === "ready" && !hasStories && hasPeripheral && (
+          {status === "ready" && feed && !hasStories && hasPeripheral && (
             <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
-              No stories primarily about {companyLabel} in the last 7 days —
-              only peripheral market coverage below.
+              No stories primarily about {companyLabel} in the last{" "}
+              {windowLabel(feed.lookbackDays)} — only peripheral market
+              coverage below.
             </p>
           )}
 
-          {status === "ready" && !hasStories && !hasPeripheral && (
+          {status === "ready" && feed && !hasStories && !hasPeripheral && (
             <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-              No news published for {symbol} in the last 7 days.
+              No news published for {symbol} in the last{" "}
+              {windowLabel(feed.lookbackDays)}.
             </p>
           )}
 

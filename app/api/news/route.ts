@@ -16,9 +16,30 @@ import type {
   NewsStory,
 } from "@/lib/types";
 
-const LOOKBACK_DAYS = 7;
+const DEFAULT_LOOKBACK_DAYS = 7;
+/** Finnhub's free tier serves one year of company news. */
+const MAX_LOOKBACK_DAYS = 365;
 const MAX_STORIES = 30;
 const MAX_PERIPHERAL_ARTICLES = 15;
+
+/**
+ * Reads `?days=`, falling back to the default for anything missing or
+ * malformed and clamping to the provider's free-tier window. An invalid value
+ * is not an error worth failing the request over.
+ */
+function parseLookbackDays(raw: string | null): number {
+  if (!raw) {
+    return DEFAULT_LOOKBACK_DAYS;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_LOOKBACK_DAYS;
+  }
+
+  return Math.min(parsed, MAX_LOOKBACK_DAYS);
+}
 
 /** Strips server-side scoring internals before an article goes to the client. */
 function toPublicArticle(article: PipelineArticle): NewsArticle {
@@ -76,13 +97,15 @@ export async function GET(
     );
   }
 
+  const lookbackDays = parseLookbackDays(searchParams.get("days"));
+
   try {
     const market = getMarketData();
 
     // Fetch and resolve in parallel; the news pipeline needs the company name
     // for relevance matching but degrades to ticker-only matching without it.
     const [articles, companyName] = await Promise.all([
-      market.getCompanyNews(symbol, LOOKBACK_DAYS),
+      market.getCompanyNews(symbol, lookbackDays),
       market.resolveCompanyName(symbol),
     ]);
 
@@ -111,6 +134,7 @@ export async function GET(
     return NextResponse.json({
       symbol,
       companyName,
+      lookbackDays,
       count: stories.length,
       totalArticles: articles.length,
       stories,
