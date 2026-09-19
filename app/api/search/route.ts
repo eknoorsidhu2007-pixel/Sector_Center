@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { toApiError } from "@/lib/finnhub";
-import { getSymbolIndex, searchCompanies } from "@/lib/symbols";
+import { getMarketData } from "@/lib/market";
 import type { ApiErrorResponse, SearchResponse } from "@/lib/types";
 
 const MAX_QUERY_LENGTH = 40;
@@ -31,8 +31,7 @@ export async function GET(
   }
 
   try {
-    const index = await getSymbolIndex();
-    const results = searchCompanies(index, query, RESULT_LIMIT);
+    const results = await getMarketData().searchCompanies(query, RESULT_LIMIT);
 
     return NextResponse.json(
       { query, results },
