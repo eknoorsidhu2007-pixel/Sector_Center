@@ -7,7 +7,9 @@ import NewsList from "./NewsList";
 import type {
   CompanyMatch,
   NewsArticle,
+  NewsCoverage,
   NewsResponse,
+  NewsStory,
   SearchResponse,
 } from "@/lib/types";
 
@@ -15,6 +17,13 @@ type FeedStatus = "loading" | "ready" | "error";
 
 interface NewsExplorerProps {
   initialSymbol: string;
+}
+
+interface NewsFeed {
+  stories: NewsStory[];
+  peripheral: NewsArticle[];
+  peripheralCount: number;
+  coverage: NewsCoverage;
 }
 
 async function readErrorMessage(
@@ -42,7 +51,7 @@ async function readErrorMessage(
 export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
   const [symbol, setSymbol] = useState(initialSymbol);
   const [company, setCompany] = useState<CompanyMatch | null>(null);
-  const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [feed, setFeed] = useState<NewsFeed | null>(null);
   const [status, setStatus] = useState<FeedStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
@@ -97,7 +106,12 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
 
         const data = (await response.json()) as NewsResponse;
 
-        setArticles(data.articles);
+        setFeed({
+          stories: data.stories,
+          peripheral: data.peripheral,
+          peripheralCount: data.peripheralCount,
+          coverage: data.coverage,
+        });
         setStatus("ready");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -105,7 +119,7 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
         }
 
         console.error("Failed to load news:", error);
-        setArticles([]);
+        setFeed(null);
         setStatus("error");
         setErrorMessage(
           error instanceof Error ? error.message : "Unable to load news"
@@ -168,6 +182,10 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
     );
   }, []);
 
+  const companyLabel = company?.name ?? symbol;
+  const hasStories = (feed?.stories.length ?? 0) > 0;
+  const hasPeripheral = (feed?.peripheralCount ?? 0) > 0;
+
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
       <header className="mb-6">
@@ -188,7 +206,7 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
       <section className="mt-8" aria-live="polite">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-200 pb-3 dark:border-zinc-800">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-            {company?.name ?? symbol}
+            {companyLabel}
           </h2>
           <span className="font-mono text-sm text-zinc-500 dark:text-zinc-400">
             {company?.displaySymbol ?? symbol}
@@ -231,14 +249,34 @@ export default function NewsExplorer({ initialSymbol }: NewsExplorerProps) {
             </div>
           )}
 
-          {status === "ready" && articles.length === 0 && (
+          {status === "ready" && feed?.coverage === "light" && hasStories && (
+            <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+              Light coverage this week — only {feed.stories.length}{" "}
+              {feed.stories.length === 1 ? "story" : "stories"} found for{" "}
+              {companyLabel}.
+            </p>
+          )}
+
+          {status === "ready" && !hasStories && hasPeripheral && (
+            <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+              No stories primarily about {companyLabel} in the last 7 days —
+              only peripheral market coverage below.
+            </p>
+          )}
+
+          {status === "ready" && !hasStories && !hasPeripheral && (
             <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
               No news published for {symbol} in the last 7 days.
             </p>
           )}
 
-          {status === "ready" && articles.length > 0 && (
-            <NewsList articles={articles} />
+          {status === "ready" && feed && (hasStories || hasPeripheral) && (
+            <NewsList
+              stories={feed.stories}
+              peripheral={feed.peripheral}
+              peripheralCount={feed.peripheralCount}
+              companyLabel={companyLabel}
+            />
           )}
         </div>
       </section>
