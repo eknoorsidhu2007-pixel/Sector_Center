@@ -16,6 +16,7 @@
  */
 
 import {
+  fetchCompanyTickers,
   fetchCompanyTickersWithExchange,
   fetchSubmissions,
   padCik,
@@ -92,6 +93,20 @@ interface TickersExchangeFile {
   data?: unknown[][];
 }
 
+/** Shape of `company_tickers.json`: a numeric-keyed map of CIK/ticker/title. */
+interface TickerFileEntry {
+  cik_str?: number;
+  ticker?: string;
+  title?: string;
+}
+
+export interface TickerAlias {
+  cik: string;
+  ticker: string;
+  isCurrent: boolean;
+  source: "sec-directory" | "separator-variant";
+}
+
 function buildDirectory(file: TickersExchangeFile): Directory {
   const byCik = new Map<string, CompanyEntity>();
   const byTicker = new Map<string, CompanyEntity>();
@@ -140,32 +155,99 @@ function buildDirectory(file: TickersExchangeFile): Directory {
           : null,
     };
 
-    all.push(entity);
-
-    // A CIK can list several tickers (share classes). Keep the first, which is
-    // the primary listing in SEC's ordering.
-    if (!byCik.has(entity.cik)) {
-      byCik.set(entity.cik, entity);
-    }
-
-    byTicker.set(entity.ticker, entity);
-  }
-
-  if (all.length === 0) {
-    throw new Error("SEC ticker directory came back empty");
+    addEntity(entity, byCik, byTicker, all);
   }
 
   return { byCik, byTicker, all };
 }
 
-async function loadDirectory(): Promise<Directory> {
-  const file = await fetchCompanyTickersWithExchange<TickersExchangeFile>();
+function addEntity(
+  entity: CompanyEntity,
+  byCik: Map<string, CompanyEntity>,
+  byTicker: Map<string, CompanyEntity>,
+  all: CompanyEntity[]
+): void {
+  all.push(entity);
 
-  if (!file) {
+  // A CIK can list several tickers (share classes). Keep the first, which is
+  // the primary listing in SEC's ordering.
+  if (!byCik.has(entity.cik)) {
+    byCik.set(entity.cik, entity);
+  }
+
+  if (!byTicker.has(entity.ticker)) {
+    byTicker.set(entity.ticker, entity);
+  }
+
+  // Index separator variants (BRK.B / BRK-B) so either spelling resolves.
+  for (const variant of separatorVariants(entity.ticker)) {
+    if (!byTicker.has(variant)) {
+      byTicker.set(variant, entity);
+    }
+  }
+}
+
+function mergeTickerFile(
+  directory: Directory,
+  file: Record<string, TickerFileEntry>
+): void {
+  for (const entry of Object.values(file)) {
+    const ticker =
+      typeof entry.ticker === "string" ? entry.ticker.trim().toUpperCase() : "";
+    const name = typeof entry.title === "string" ? entry.title.trim() : "";
+
+    if (!ticker || !name || entry.cik_str === undefined) {
+      continue;
+    }
+
+    const cik = padCik(entry.cik_str);
+
+    const existing = directory.byCik.get(cik);
+
+    if (existing) {
+      if (!directory.byTicker.has(ticker)) {
+        directory.byTicker.set(ticker, existing);
+      }
+
+      continue;
+    }
+
+    if (directory.byTicker.has(ticker)) {
+      continue;
+    }
+
+    addEntity(
+      { cik, ticker, name, exchange: null },
+      directory.byCik,
+      directory.byTicker,
+      directory.all
+    );
+  }
+}
+
+async function loadDirectory(): Promise<Directory> {
+  const [exchangeFile, tickerFile] = await Promise.all([
+    fetchCompanyTickersWithExchange<TickersExchangeFile>(),
+    fetchCompanyTickers<Record<string, TickerFileEntry>>(),
+  ]);
+
+  if (!exchangeFile && !tickerFile) {
     throw new Error("SEC ticker directory was unavailable");
   }
 
-  return buildDirectory(file);
+  const directory = exchangeFile
+    ? buildDirectory(exchangeFile)
+    : { byCik: new Map(), byTicker: new Map(), all: [] };
+
+  if (tickerFile) {
+    mergeTickerFile(directory, tickerFile);
+  }
+
+  if (directory.all.length === 0) {
+    throw new Error("SEC ticker directory came back empty");
+  }
+
+  return directory;
 }
 
 /**
@@ -265,6 +347,61 @@ export async function listCompanies(): Promise<CompanyEntity[]> {
   const { all } = await getCompanyDirectory();
 
   return all;
+}
+
+/**
+ * Current tickers plus separator variants. Former tickers from submissions
+ * are added later by `aliasesFromIdentity` once that document is fetched.
+ */
+export async function listTickerAliases(): Promise<TickerAlias[]> {
+  const { byTicker } = await getCompanyDirectory();
+  const aliases: TickerAlias[] = [];
+  const seen = new Set<string>();
+
+  for (const [ticker, company] of byTicker) {
+    const key = `${company.cik}:${ticker}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    aliases.push({
+      cik: company.cik,
+      ticker,
+      isCurrent: true,
+      source: ticker === company.ticker ? "sec-directory" : "separator-variant",
+    });
+  }
+
+  return aliases;
+}
+
+export function aliasesFromIdentity(
+  identity: CompanyIdentity
+): TickerAlias[] {
+  const aliases: TickerAlias[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of identity.tickers) {
+    for (const variant of separatorVariants(raw)) {
+      const key = `${identity.cik}:${variant}`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      aliases.push({
+        cik: identity.cik,
+        ticker: variant,
+        isCurrent: true,
+        source: "sec-directory",
+      });
+    }
+  }
+
+  return aliases;
 }
 
 // -- Full identity -------------------------------------------------------------
