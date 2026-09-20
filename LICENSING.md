@@ -21,8 +21,8 @@ Last verified against provider terms and pricing pages: 2026-09-19.
 | --- | --- | --- | --- |
 | Finnhub | quotes, profile, metrics, news, insider, filings, earnings, peers, contracts | Free | **No** |
 | Twelve Data | OHLC candles | Basic (free) | **No** |
-| SEC EDGAR | not yet integrated | n/a | **Yes** (public domain) |
-| USAspending | not yet integrated directly | n/a | **Yes** (CC0) |
+| SEC EDGAR | entity resolution, Form 4 XML, filings foundation | n/a | **Yes** (public domain) |
+| USAspending | preview via Finnhub `/stock/usa-spending` | n/a | **Yes** (CC0); direct client is later |
 
 ---
 
@@ -147,9 +147,10 @@ Obligations, which are technical rather than contractual:
 
 - **Maximum 10 requests/second aggregate** across all `sec.gov` subdomains,
   regardless of how many machines are used. The SEC reserves the right to block
-  IPs that exceed it.
+  IPs that exceed it. Enforced in `lib/research/sec-client.ts`.
 - Every request must declare a `User-Agent` identifying the requester with
-  contact information, e.g. `Sector Center contact@example.com`.
+  contact information, e.g. `Sector Center contact@example.com`. Set
+  `SEC_USER_AGENT` in `.env.local`.
 - Prefer the nightly bulk archives over per-company crawling for backfill.
 
 ### USAspending
