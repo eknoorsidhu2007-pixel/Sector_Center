@@ -1,10 +1,15 @@
 import { formatDateValue, formatLargeNumber, formatPrice, formatVolume } from "@/lib/format";
-import type { InsiderTransaction, InsiderTransactionKind } from "@/lib/market";
+import type {
+  InsiderSentimentPoint,
+  InsiderTransaction,
+  InsiderTransactionKind,
+} from "@/lib/market";
 
 import Section, { EmptyState } from "./Section";
 
 interface InsiderActivityProps {
   transactions: InsiderTransaction[];
+  sentiment?: InsiderSentimentPoint[];
   lookbackDays: number;
   currency: string;
 }
@@ -43,12 +48,19 @@ const KIND_STYLES: Record<InsiderTransactionKind, string> = {
  * option exercises are acquisitions too, but including them would turn
  * routine compensation into an apparent buying signal.
  */
+function monthLabel(point: InsiderSentimentPoint): string {
+  const date = new Date(Date.UTC(point.year, point.month - 1, 1));
+
+  return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
 export default function InsiderActivity({
   transactions,
+  sentiment = [],
   lookbackDays,
   currency,
 }: InsiderActivityProps) {
-  if (transactions.length === 0) {
+  if (transactions.length === 0 && sentiment.length === 0) {
     return (
       <Section
         title="Insider Activity"
@@ -91,7 +103,40 @@ export default function InsiderActivity({
         </span>
       }
     >
-      {openMarket.length > 0 ? (
+      {sentiment.length > 0 && (
+        <div className="mb-5 overflow-x-auto">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+            Monthly share-purchase ratio
+          </p>
+          <div className="flex gap-2">
+            {sentiment.slice(0, 6).map((point) => (
+              <div
+                key={`${point.year}-${point.month}`}
+                className="min-w-[4.5rem] rounded-md border border-zinc-200 px-2 py-1.5 dark:border-zinc-800"
+              >
+                <p className="text-[10px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                  {monthLabel(point)}
+                </p>
+                <p
+                  className={`text-sm font-semibold tabular-nums ${
+                    point.mspr === null
+                      ? "text-zinc-400"
+                      : point.mspr >= 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {point.mspr === null
+                    ? "—"
+                    : `${point.mspr >= 0 ? "+" : ""}${point.mspr.toFixed(1)}`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {openMarket.length > 0 && (
         <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 dark:border-zinc-800 dark:bg-zinc-800">
           <div className="bg-white px-4 py-3 dark:bg-zinc-950">
             <dt className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
@@ -120,13 +165,17 @@ export default function InsiderActivity({
             </dd>
           </div>
         </div>
-      ) : (
+      )}
+
+      {transactions.length > 0 && openMarket.length === 0 && (
         <p className="mb-5 text-sm text-zinc-500 dark:text-zinc-400">
           No open-market buys or sells in this window. The transactions below
           are grants, exercises, or other non-discretionary activity.
         </p>
       )}
 
+      {transactions.length > 0 && (
+      <>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
@@ -192,6 +241,8 @@ export default function InsiderActivity({
         <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
           Showing {MAX_ROWS} of {transactions.length} transactions.
         </p>
+      )}
+      </>
       )}
     </Section>
   );
