@@ -102,12 +102,13 @@ interface SecFetchOptions {
   revalidate: number | false;
   /** Treat 404 as an empty result rather than an error. */
   allowNotFound?: boolean;
+  accept?: string;
 }
 
-async function secFetch<T>(
+async function secRequest(
   url: string,
   options: SecFetchOptions
-): Promise<T | null> {
+): Promise<Response | null> {
   const userAgent = requireUserAgent();
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
@@ -115,7 +116,7 @@ async function secFetch<T>(
       fetch(url, {
         headers: {
           "User-Agent": userAgent,
-          Accept: "application/json",
+          Accept: options.accept ?? "application/json",
           "Accept-Encoding": "gzip, deflate",
         },
         ...(options.revalidate === false
@@ -128,12 +129,7 @@ async function secFetch<T>(
     });
 
     if (response.ok) {
-      try {
-        return (await response.json()) as T;
-      } catch (cause) {
-        console.error(`SEC returned unparseable JSON for ${url}:`, cause);
-        throw new SecError(502, "Malformed response from the SEC");
-      }
+      return response;
     }
 
     if (response.status === 404 && options.allowNotFound) {
@@ -176,11 +172,55 @@ async function secFetch<T>(
   throw new SecError(502, "The SEC filing service returned an error");
 }
 
+async function secFetch<T>(
+  url: string,
+  options: SecFetchOptions
+): Promise<T | null> {
+  const response = await secRequest(url, options);
+
+  if (!response) {
+    return null;
+  }
+
+  try {
+    return (await response.json()) as T;
+  } catch (cause) {
+    console.error(`SEC returned unparseable JSON for ${url}:`, cause);
+    throw new SecError(502, "Malformed response from the SEC");
+  }
+}
+
+async function secFetchText(
+  url: string,
+  options: SecFetchOptions
+): Promise<string | null> {
+  const response = await secRequest(url, {
+    ...options,
+    accept: options.accept ?? "application/xml, text/xml, text/plain",
+  });
+
+  if (!response) {
+    return null;
+  }
+
+  return response.text();
+}
+
 // -- Public helpers ------------------------------------------------------------
 
 /** EDGAR identifies companies by a zero-padded 10-digit CIK. */
 export function padCik(cik: string | number): string {
   return String(cik).replace(/\D/g, "").padStart(10, "0");
+}
+
+/** Archive paths drop the leading zeros that `padCik` adds. */
+export function unpadCik(cik: string | number): string {
+  return String(cik).replace(/\D/g, "").replace(/^0+/, "") || "0";
+}
+
+/** Accession numbers in archive URLs have the dashes stripped. */
+export function accessionPath(accessionNumber: string): string {
+  return accessionNumber.replace(/-/g, "");
 }
 
 /**
@@ -289,6 +329,68 @@ export function searchFullText<T>(
   }
 
   return secFetch<T>(url.toString(), { revalidate: revalidateSeconds });
+}
+
+export function archiveDocumentUrl(
+  cik: string | number,
+  accessionNumber: string,
+  filename: string
+): string {
+  return `${WWW_BASE_URL}/Archives/edgar/data/${unpadCik(cik)}/${accessionPath(accessionNumber)}/${filename}`;
+}
+
+interface ArchiveIndexItem {
+  name?: string;
+  type?: string;
+}
+
+interface ArchiveIndex {
+  directory?: {
+    item?: ArchiveIndexItem | ArchiveIndexItem[];
+  };
+}
+
+function asIndexItems(item: ArchiveIndex["directory"]): ArchiveIndexItem[] {
+  const raw = item?.item;
+
+  if (!raw) {
+    return [];
+  }
+
+  return Array.isArray(raw) ? raw : [raw];
+}
+
+/**
+ * Lists files in one EDGAR accession. Used to find the raw Form 4 XML when
+ * `primaryDocument` points at the XSL-rendered HTML view.
+ */
+export async function fetchArchiveIndex(
+  cik: string | number,
+  accessionNumber: string,
+  revalidateSeconds = 86_400
+): Promise<string[]> {
+  const url = archiveDocumentUrl(cik, accessionNumber, "index.json");
+  const index = await secFetch<ArchiveIndex>(url, {
+    revalidate: revalidateSeconds,
+    allowNotFound: true,
+  });
+
+  return asIndexItems(index?.directory)
+    .map((entry) => entry.name?.trim() ?? "")
+    .filter((name) => name.length > 0);
+}
+
+/** Raw text of one archived filing document (XML, HTML, or complete .txt). */
+export function fetchArchiveDocument(
+  cik: string | number,
+  accessionNumber: string,
+  filename: string,
+  revalidateSeconds = 86_400
+): Promise<string | null> {
+  return secFetchText(archiveDocumentUrl(cik, accessionNumber, filename), {
+    revalidate: revalidateSeconds,
+    allowNotFound: true,
+  });
 }
 
 /** Translates a thrown value into a status and browser-safe message. */
