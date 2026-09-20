@@ -6,6 +6,7 @@ import PriceChart from "@/components/PriceChart";
 import AnalystRatings from "@/components/stock/AnalystRatings";
 import EarningsSummary from "@/components/stock/EarningsSummary";
 import FilingsList from "@/components/stock/FilingsList";
+import FinancialStatements from "@/components/stock/FinancialStatements";
 import GovernmentContracts from "@/components/stock/GovernmentContracts";
 import HistoricalContext from "@/components/stock/HistoricalContext";
 import InsiderActivity from "@/components/stock/InsiderActivity";
@@ -80,7 +81,9 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
     metricsResult,
     peersResult,
     insiderResult,
+    sentimentResult,
     filingsResult,
+    reportsResult,
     surprisesResult,
     calendarResult,
     recommendResult,
@@ -91,7 +94,9 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
     market.getKeyMetrics(symbol),
     market.getPeers(symbol),
     market.getInsiderTransactions(symbol, INSIDER_LOOKBACK_DAYS),
+    market.getInsiderSentiment(symbol, 12),
     market.getFilings(symbol),
+    market.getFinancialReports(symbol, "quarterly", 4),
     market.getEarningsSurprises(symbol),
     market.getEarningsCalendar(symbol, EARNINGS_PAST_DAYS, EARNINGS_FUTURE_DAYS),
     market.getRecommendations(symbol),
@@ -114,7 +119,9 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
 
   const peers = settled(peersResult, "Peers", symbol) ?? [];
   const insiderTransactions = settled(insiderResult, "Insider activity", symbol) ?? [];
+  const insiderSentiment = settled(sentimentResult, "Insider sentiment", symbol) ?? [];
   const filings = settled(filingsResult, "Filings", symbol) ?? [];
+  const reports = settled(reportsResult, "Financial statements", symbol) ?? [];
   const surprises = settled(surprisesResult, "Earnings surprises", symbol) ?? [];
   const calendar = settled(calendarResult, "Earnings calendar", symbol) ?? [];
   const recommendations = settled(recommendResult, "Recommendations", symbol) ?? [];
@@ -198,6 +205,8 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
 
       <HistoricalContext quote={quote} metrics={metrics} currency={currency} />
 
+      <FinancialStatements reports={reports} currency={currency} />
+
       <EarningsSummary
         surprises={surprises}
         calendar={calendar}
@@ -208,6 +217,7 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
 
       <InsiderActivity
         transactions={insiderTransactions}
+        sentiment={insiderSentiment}
         lookbackDays={INSIDER_LOOKBACK_DAYS}
         currency={currency}
       />
