@@ -49,15 +49,15 @@ export async function generateMetadata(
   const symbol = normalizeSymbol(raw);
 
   if (!symbol) {
-    return { title: "Stock not found — Sector Center" };
+    return {
+      title: "Stock Not Found | Sector Center",
+      description: "The requested stock symbol could not be found.",
+    };
   }
 
-  const name = await getMarketData().resolveCompanyName(symbol);
-  const label = name ? `${name} (${symbol})` : symbol;
-
   return {
-    title: `${label} — Sector Center`,
-    description: `Price, fundamentals, insider activity, filings, and news for ${label}.`,
+    title: `${symbol} Stock Research | Sector Center`,
+    description: `View price data, charts, fundamentals, insider activity, filings, and news for ${symbol}.`,
   };
 }
 
