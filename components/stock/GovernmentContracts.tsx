@@ -6,6 +6,7 @@ import Section from "./Section";
 interface GovernmentContractsProps {
   contracts: GovernmentContract[];
   lookbackDays: number;
+  compact?: boolean;
 }
 
 const MAX_ROWS = 8;
