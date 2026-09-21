@@ -192,9 +192,34 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
         )}
       </section>
 
-      <section className="mb-8" aria-label="Price chart">
-        <PriceChart symbol={symbol} />
-      </section>
+      <div className="mb-8 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+  <section className="min-w-0" aria-label="Price chart">
+    <PriceChart symbol={symbol} />
+  </section>
+
+  <aside className="space-y-6" aria-label="Company intelligence">
+    <StockNewsPanel symbol={symbol} companyName={companyName} />
+
+    {contracts.length > 0 && (
+      <div className="[&>section]:mb-0">
+        <GovernmentContracts
+          contracts={contracts}
+          lookbackDays={CONTRACT_LOOKBACK_DAYS}
+          compact
+        />
+      </div>
+    )}
+
+    <div
+      aria-label="Advertisement"
+      className="flex min-h-28 items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-zinc-50/50 dark:border-zinc-800 dark:bg-zinc-950/50"
+    >
+      <span className="text-xs uppercase tracking-[0.18em] text-zinc-400 dark:text-zinc-600">
+        Advertisement
+      </span>
+    </div>
+  </aside>
+</div>
 
       <Section
         title="Key Metrics"
