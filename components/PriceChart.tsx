@@ -215,8 +215,18 @@ export default function PriceChart({ symbol }: PriceChartProps) {
 
         const { candles } = (await response.json()) as { candles: Candle[] };
 
-        candlesRef.current = candles;
-        applyCandles();
+// Lightweight Charts requires unique timestamps in ascending order.
+// If duplicate timestamps exist, keep the final candle returned.
+const normalizedCandles = Array.from(
+  new Map(
+    candles
+      .filter((candle) => Number.isFinite(candle.time))
+      .map((candle) => [candle.time, candle] as const)
+  ).values()
+).sort((a, b) => a.time - b.time);
+
+candlesRef.current = normalizedCandles;
+applyCandles();
         setStatus("ready");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
