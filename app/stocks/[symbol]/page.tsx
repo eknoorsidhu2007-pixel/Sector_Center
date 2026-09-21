@@ -12,6 +12,7 @@ import HistoricalContext from "@/components/stock/HistoricalContext";
 import InsiderActivity from "@/components/stock/InsiderActivity";
 import MetricGrid from "@/components/stock/MetricGrid";
 import PeerComparison from "@/components/stock/PeerComparison";
+import Section from "@/components/stock/Section";
 import StockNewsPanel from "@/components/stock/StockNewsPanel";
 import {
   formatChange,
