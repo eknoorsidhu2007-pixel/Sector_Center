@@ -43,11 +43,11 @@ export default function GovernmentContracts({
       }
     >
       <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-        {contracts.slice(0, MAX_ROWS).map((contract, index) => (
-          <li
-            key={contract.permalink ?? `${contract.actionDate}-${index}`}
-            className="py-3"
-          >
+  {contracts.slice(0, MAX_ROWS).map((contract, index) => (
+    <li
+      key={`${contract.permalink ?? contract.actionDate ?? "contract"}-${index}`}
+      className="py-3"
+    >
             <div className="flex items-baseline justify-between gap-4">
               <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                 {contract.awardingAgency ?? "Unknown agency"}
