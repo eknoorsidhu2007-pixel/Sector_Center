@@ -132,7 +132,7 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
   const isPositive = (quote?.change ?? 0) >= 0;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+    <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
       <nav aria-label="Breadcrumb" className="mb-6">
         <Link
           href="/"
