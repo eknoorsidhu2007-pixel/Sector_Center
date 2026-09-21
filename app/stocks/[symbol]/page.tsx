@@ -253,18 +253,7 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
 
       <PeerComparison peers={peers} industry={profile?.industry ?? null} />
 
-      <Section
-        title="Latest News"
-        description={`Ranked, deduplicated coverage of ${companyName}.`}
-      >
-        <Link
-          href={`/news?symbol=${encodeURIComponent(symbol)}`}
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
-        >
-          View latest news
-          <span aria-hidden="true">&rarr;</span>
-        </Link>
-      </Section>
+      
     </main>
   );
 }
