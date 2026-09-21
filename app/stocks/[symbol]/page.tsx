@@ -247,10 +247,7 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
         currency={currency}
       />
 
-      <GovernmentContracts
-        contracts={contracts}
-        lookbackDays={CONTRACT_LOOKBACK_DAYS}
-      />
+    
 
       <FilingsList filings={filings} />
 
