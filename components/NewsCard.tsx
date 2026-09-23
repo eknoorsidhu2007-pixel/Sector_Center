@@ -81,6 +81,61 @@ export default function NewsCard({ story }: NewsCardProps) {
           </span>
         )}
       </div>
+      "capital-return": { label: "Capital Return", className: BUSINESS_BADGE },
+  layoffs: { label: "Layoffs", className: LAYOFFS_BADGE },
+  macro: { label: "Macro", className: NEUTRAL_BADGE },
+  opinion: { label: "Opinion", className: NEUTRAL_BADGE },
+};
+
+export default function NewsCard({ story }: NewsCardProps) {
+  // eventTypes arrive weight-ordered from the pipeline; show at most two.
+  const badges = story.eventTypes
+    .filter((type) => EVENT_BADGES[type])
+    .slice(0, 2);
+  const otherArticles = story.articles.filter((article) => article.url !== story.url);
+  const wasUpdated =
+    Date.parse(story.latestPublishedAt) - Date.parse(story.publishedAt) > 60 * 60 * 1000;
+
+  return (
+    <article className="group rounded-lg border border-zinc-200 bg-white p-4 transition hover:border-zinc-300 hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="font-medium text-zinc-700 dark:text-zinc-300">
+          {story.source}
+        </span>
+        <span aria-hidden="true">·</span>
+        <time dateTime={story.publishedAt} title={formatAbsoluteTime(story.publishedAt)}>
+          {formatRelativeTime(story.publishedAt)}
+        </time>
+        {wasUpdated && story.sourceCount > 1 && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span title={formatAbsoluteTime(story.latestPublishedAt)}>
+              updated {formatRelativeTime(story.latestPublishedAt)}
+            </span>
+          </>
+        )}
+        {story.sourceCount > 1 && (
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+            {story.sourceCount} sources
+          </span>
+        )}
+        {badges.length > 0 && (
+          <span className="flex gap-1.5">
+            {badges.map((type) => {
+              const badge = EVENT_BADGES[type];
+
+              return (
+                <span
+                  key={type}
+                  className={`rounded-full px-2 py-0.5 font-medium ${badge?.className ?? ""}`}
+                >
+                  {badge?.label}
+                </span>
+              );
+            })}
+          </span>
+        )}
+      </div>
 
       <h3 className="mt-2 text-base font-semibold leading-snug text-zinc-900 dark:text-zinc-100">
         <a
