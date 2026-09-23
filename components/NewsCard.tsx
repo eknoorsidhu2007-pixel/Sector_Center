@@ -119,23 +119,7 @@ export default function NewsCard({ story }: NewsCardProps) {
             {story.sourceCount} sources
           </span>
         )}
-        {badges.length > 0 && (
-          <span className="flex gap-1.5">
-            {badges.map((type) => {
-              const badge = EVENT_BADGES[type];
-
-              return (
-                <span
-                  key={type}
-                  className={`rounded-full px-2 py-0.5 font-medium ${badge?.className ?? ""}`}
-                >
-                  {badge?.label}
-                </span>
-              );
-            })}
-          </span>
-        )}
-      </div>
+        {badges.le
 
       <h3 className="mt-2 text-base font-semibold leading-snug text-zinc-900 dark:text-zinc-100">
         <a
