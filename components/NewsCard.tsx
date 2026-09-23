@@ -70,12 +70,12 @@ export default function NewsCard({ story }: NewsCardProps) {
               const badge = EVENT_BADGES[type];
 
               return (
-                <spanagieonsiongagieonsiongagieonsiongagieonsiong
+                <span
                   key={type}
                   className={`rounded-full px-2 py-0.5 font-medium ${badge?.className ?? ""}`}
                 >
                   {badge?.label}
-                </span>qegerytgrgrtegerqegnwegbuiweb guwbguibweuibguiwebgiownfeiopnwuiobnvuiwebniovnmweiovbnwioenv0poqwjvp[oqjwvponqeiovbqwiopvjioqwenviouwebvuiowebvuiwbevionwepoifjwioebngfiowehgfio]
+                </span>
               );
             })}
           </span>
