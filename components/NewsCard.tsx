@@ -56,19 +56,28 @@ export default function NewsCard({ story }: NewsCardProps) {
             <span aria-hidden="true">·</span>
             <span title={formatAbsoluteTime(story.latestPublishedAt)}>
               updated {formatRelativeTime(story.latestPublishedAt)}
- akegbhnioeniovnewiovnwioevniwenvw
-                </span>
-              );
-            })}
-                </span>
-              );
-            })}
             </span>
-          );
-        })}
-                </span>
+          </>
+        )}
+        {story.sourceCount > 1 && (
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+            {story.sourceCount} sources
+          </span>
+        )}
+        {badges.length > 0 && (
+          <span className="flex gap-1.5">
+            {badges.map((type) => {
+              const badge = EVENT_BADGES[type];
+
+              return (
+                <spanagieonsiongagieonsiongagieonsiongagieonsiong
+                  key={type}
+                  className={`rounded-full px-2 py-0.5 font-medium ${badge?.className ?? ""}`}
+                >
+                  {badge?.label}
+                </span>qegerytgrgrtegerqegnwegbuiweb guwbguibweuibguiwebgiownfeiopnwuiobnvuiwebniovnmweiovbnwioenv0poqwjvp[oqjwvponqeiovbqwiopvjioqwenviouwebvuiowebvuiwbevionwepoifjwioebngfiowehgfio]
               );
-            })}safnsuibdfguisbd
+            })}
           </span>
         )}
       </div>
