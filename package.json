@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "research:seed-companies": "npx --yes tsx --env-file=.env.local scripts/seed-companies.ts"
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.14.0",

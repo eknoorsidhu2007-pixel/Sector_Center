@@ -1,10 +1,8 @@
 /**
  * Builds the rows that seed `companies` and `ticker_aliases`.
  *
- * This does not write to Supabase. The schema is applied separately from
- * `supabase/migrations/`, and a write path waits until the project has a
- * configured service-role key. The row shapes are stable so that write path
- * can call this function unchanged.
+ * Persistence lives in `lib/research/persist.ts` and is invoked only from
+ * the manual seed script. This module stays a pure row builder.
  */
 
 import {
